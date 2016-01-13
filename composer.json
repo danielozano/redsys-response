@@ -12,7 +12,7 @@
 	},
 	"autoload": {
 		"psr-4": {
-			"Redsys\\Api\\": "src/Redsys/Api"
+			"Redsys\\": "app/src/Redsys"
 		}
 	}
 }
