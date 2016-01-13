@@ -1,6 +1,7 @@
 {
 	"name": "redsys/response",
 	"license": "MIT",
+	"version": "0.1.0-dev",
 	"authors": [
 		{
 			"name": "Daniel Lozano",
