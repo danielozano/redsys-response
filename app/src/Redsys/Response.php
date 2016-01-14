@@ -61,8 +61,9 @@ class Response
     public function loadFromUrl()
     {
         $path = basename(preg_replace('#/$#', '', getenv('REQUEST_URI')));
-
-        if (!$this->isValidPath($path)) {
+        // Alomejor trae parámetros y sólo nos interesa la primera parte
+        $path = explode("?", $path);
+        if (!$this->isValidPath($path[0])) {
             die('Invalid Path');
         }
 
