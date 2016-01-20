@@ -2,182 +2,180 @@
 namespace Redsys;
 
 use Exception;
-use Redsys\Api\RedsysAPI as Redsys;
+use Redsys\Api\RedsysAPI;
 use Redsys\Curl;
 
 class Response
 {
-    private $options = array();
-    /**
-     * Objeto que contiene la API de redsys para poder utilizar sha256 de forma cómoda
-     * @var RedsysAPI
-     * @author  Daniel Lozano Morales dn.lozano.m@gmail.com
-     */
-    private $redsys;
-    /**
-     * Determinar si el TPV es viejo o nuevo (sha256)
-     * @var string
-     * @author  Daniel Lozano Morales dn.lozano.m@gmail.com
-     */
-    private $sha256;
+	private $dsParameters;
 
-    public function __construct(array $options)
-    {
-       /**
-        * Comprobar si petición para sha256 o tpv antiguo
-        * 
-        * @author  Daniel Lozano Morales dn.lozano.m@gmail.com
-        * @todo Hacerlo comprobando la versión de la firma.
-        */
-        isset($_POST['Ds_MerchantParameters']) ? $this->sha256 = true : $this->sha256 = false;
-        
-        $this->setOption($options);
+	private $merchantParamsArray;
 
-        return $this;
-    }
+	protected $redsysApi;
+	
+	public $options;
 
-    public function setOption($option, $value = null)
-    {
-        if (is_string($option)) {
-            $option = array($option => $value);
-        }
+	public function __construct(RedsysAPI $redsysApi, array $options)
+	{
+		$this->redsysApi = $redsysApi;
+		$this->setOptions($options);
+		$this->setDsParams();
+	}
 
-        $this->options = array_merge($this->options, $option);
+	/** inicializar los parámetros recibidos */
+	private function setDsParams()
+	{
+		$dsKeys = array('Ds_SignatureVersion', 'Ds_Signature', 'Ds_MerchantParameters');
+		if (empty($_POST))
+		{
+			throw new Exception("No se han recibido datos", 1);
+		}
+		foreach ($dsKeys as $key)
+		{
+			if (!array_key_exists($key, $_POST))
+			{
+				throw new Exception("No se ha recibido el siguiente parámetro: $key", 1);
+			}
+			$this->dsParameters[$key] = $_POST[$key];
+		}
+	}
+	/** obtener uno de los tres parámetros recibidos */
+	public function getParam($key)
+	{
+		if (!array_key_exists($key, $this->dsParameters))
+		{
+			return;
+		}
+		return $this->dsParameters[$key];
+	}
+	/** obtener un sólo parámetro de los MerchantParameters */
+	public function getMerchantParam($key)
+	{
+		$merchantParameters = $this->getMerchantParamArray();
 
-        return $this;
-    }
+		return $merchantParameters[$key];
+	}
+	/** obtener array con los parámetros recibidos decodificados */
+	public function getMerchantParamArray()
+	{
+		$merchantParameters = $this->getParam('Ds_MerchantParameters');
+		$decodedParameters = $this->redsysApi->decodeMerchantParameters($merchantParameters);
+		$decodedParametersArray = json_decode($decodedParameters, true);
+		
+		return $decodedParametersArray;
+	}
 
-    public function getOption($key = null, $default = '')
-    {
-        if (empty($key)) {
-            return $this->options;
-        } elseif (array_key_exists($key, $this->options)) {
-            return $this->options[$key];
-        } else {
-            return $default;
-        }
-    }
+	/** forma rápida de establecer las opciones a través del array directamente */
+	private function setOptions(array $options)
+	{
+		$this->options = $options;
+	}
+	/** devolver el array completo de opciones */
+	public function getOptionArray()
+	{
+		return $this->options;
+	}
+	/** obtener una opción de configuración */
+	public function getOption($key)
+	{
+		if (!array_key_exists($key, $this->options))
+		{
+			return;
+		}
+		return $this->options[$key];
+	}
+	/** establecer una opción, posibilidad de reemplazar mediante array */
+	public function setOption($key, $value = null)
+	{
+		if (is_array($key))
+		{
+			$this->setOptions = $key;
+		}
+		else
+		{
+			$this->options[$key] = $value;	
+		}
+	}
+	/** comprobar que la firma recibida y la generada a partir de datos recibidos son iguales */
+	public function checkSignature($generada = null, $recibida = null)
+	{
+		if ($generada)
+		{
+			$firmaGenerada = $generada;
+		}
+		else
+		{
+			//	obtener clave
+			$sha256key = $this->getOption('sha256key');
+			// obtener array de parámetros
+			$parameters = $this->getMerchantParamArray();
+			// generar signature de la misma forma que cuando el cliente envía
+			$redsysApiCheck = new RedsysApi();
+			// rellenar nuevo objeto, al igual que en el cliente
+			foreach ($parameters as $key => $value)
+			{
+				$redsysApiCheck->setParameter($key, $value);
+			}
+			$firmaGenerada = $redsysApiCheck->createMerchantSignature($sha256key);
+		}
 
-    public function loadFromUrl()
-    {
-        $path = basename(preg_replace('#/$#', '', getenv('REQUEST_URI')));
+		if ($recibida)
+		{
+			$firmaRecibida = $recibida;
+		}
+		else
+		{
+			$firmaRecibida = $this->getParam('Ds_Signature');
+		}
 
-        if (!$this->isValidPath($path)) {
-            die('Invalid Path');
-        }
+		if ($firmaRecibida !== $firmaGenerada)
+		{
+			throw new Exception("Las firmas no coinciden", 1);
+		}
+		return true;
+	}
 
-        try {
-            /**
-             * Si no es sha256, seguir el workflow antiguo.
-             * Es mejor no refactorizar nada de momento.
-             *
-             * @author  Daniel Lozano Morales dn.lozano.m@gmail.com
-             */
-            if ($this->sha256)
-            {
-                $this->realizarPagoSha256();
-            }
-        } catch (Exception $e) {}
-    }
-
-    private function isValidPath($path)
-    {
-        return in_array($path, array('realizarPago'), true);
-    }
-    /**
-     * Simular respuesta a un pago realizando mediante un TPV Redsys con la nueva
-     * clave sha256
-     * 
-     * @author  Daniel Lozano Morales dn.lozano.m@gmail.com
-     */
-    public function realizarPagoSha256 ()
-    {
-        // firma recibida desde el cliente
-        $firmaRecibida = $_POST['Ds_Signature'];
-        $params = $_POST["Ds_MerchantParameters"];
-
-        $this->redsys = new Redsys();
-        $datos = $this->redsys->decodeMerchantParameters($params);
-
-        $sha256key = $this->getOption('256key');
-        $firmaGenerada = $this->redsys->createMerchantSignatureNotif($sha256key, $params);
-        /**
-         * Comprobar si queremos transición exitosa o errónea
-         * 
-         * @author Daniel Lozano dn.lozano.m@gmail.com
-         */
-        $estadoPedido = $this->getOption('status', 'autorizada');
-        $success = true;
-        $codigoRespuesta = 99;
-
-        $urlBack = $this->redsys->getParameter('DS_MERCHANT_URLOK');
-        if (empty($estadoPedido))
-        {
-            die('Necesitas indicar un estado para el pedido');
-        }
-
-        if ($estadoPedido === 'sin finalizar' || $estadoPedido === 'canelada')
-        {
-            die(header('Location: ' . $this->redsys->getParameter('DS_MERCHANT_URLKO')));
-        }
-
-        if ($estadoPedido == 'denegada')
-        {
-            $success = false;
-            $codigoRespuesta = $this->getOption('errorCode', 101);
-            $urlBack = $this->redsys->getParameter('DS_MERCHANT_URLKO');
-        }
-        /**
-         * Generar Array de Datos
-         *
-         * @author  Daniel Lozano dn.lozano.m@gmail.com
-         */
-        $post = array(
-            'Ds_Amount' => $this->redsys->getParameter('DS_MERCHANT_AMOUNT'),
-            'Ds_Currency' => $this->redsys->getParameter('DS_MERCHANT_CURRENCY'),
-            'Ds_Order' => $this->redsys->getParameter('DS_MERCHANT_ORDER'),
-            'Ds_MerchantCode' => $this->redsys->getParameter('DS_MERCHANT_MERCHANTCODE'),
-            'Ds_Terminal' => $this->redsys->getParameter('DS_MERCHANT_TERMINAL'),
-            'Ds_TransactionType' => 0,
-            'Ds_ConsumerLanguage' => $this->redsys->getParameter('Ds_Merchant_ConsumerLanguage')
+	public function createFakeResponse($type = 'asincrona')
+	{
+		if (!$this->checkSignature())
+		{
+			throw new Exception("Fallo en la firma", 1);
+		}
+		// Generar objeto respuesta
+		$redsysResponse = new RedsysAPI();
+		// datos del objeto respuesta
+		$responseParameters = array(
+            'Ds_Amount' => $this->getMerchantParam('DS_MERCHANT_AMOUNT'),
+            'Ds_Currency' => $this->getMerchantParam('DS_MERCHANT_CURRENCY'),
+            'Ds_Order' => $this->getMerchantParam('DS_MERCHANT_ORDER'),
+            'Ds_MerchantCode' => $this->getMerchantParam('DS_MERCHANT_MERCHANTCODE'),
+            'Ds_Terminal' => $this->getMerchantParam('DS_MERCHANT_TERMINAL'),
+            'Ds_TransactionType' => 0
         );
-        // Objeto para generar respuesta encriptada
-        $redsysResponse = new Redsys();
-        // Establecer url de vuelta
-
-        foreach($post as $key => $value)
+        // rellenar objeto respuesta
+        foreach ($responseParameters as $key => $value)
         {
-            $redsysResponse->setParameter($key, $value);
+        	$redsysResponse->setParameter($key, $value);
+        }
+        // URL DE VUELTA
+        $urlBack = $this->getMerchantParam('DS_MERCHANT_URLOK');
+        // Crear firma
+        $responseSignature = $redsysResponse->createMerchantSignature($this->getOption('sha256key'));
+        // Crer parámetros
+        $responseParams = $redsysResponse->createMerchantParameters();
+        // comprobar si queremos repuesta síncrona o asíncrona
+        // TODO: implementar códigos de respuesta
+        if ('asincrona' === $type)
+        {
+
         }
 
-        $redsysResponse->setParameter('Ds_Response', $codigoRespuesta);
-
-        $codigoAuthorizacion = ($success ? mt_rand(100000, 999999) : '');
-        $redsysResponse->setParameter('Ds_AuthorisationCode', $codigoAuthorizacion);
-
-        $response = array();
-        $response['Ds_MerchantParameters'] = $redsysResponse->createMerchantParameters();
-        $response['Ds_Signature'] = $redsysResponse->createMerchantSignatureNotif($this->getOption('256key'), $response['Ds_MerchantParameters']);
-
-        $curl = new Curl(array(
-                'base'  => $this->redsys->getParameter('DS_MERCHANT_MERCHANTURL')
-            )
-        );
-
-        if (isset($_GET['asynchronous']) && $_GET['asynchronous'])
-        {
-            $curl->post('', array(), $response);
-
-            sleep(1);
-
-            die(header('Location: ' . $urlBack));
-        }
-        else 
+        if ('sincrona' === $type)
         {
             $form = "
                 <form action=$urlBack method=POST name='frm'>
-                    <input type='hidden' name='Ds_Signature' value=" . $response['Ds_Signature'] . ">
-                    <input type='hidden' name='Ds_MerchantParameters' value=" . $response['Ds_MerchantParameters'] . ">
+                    <input type='hidden' name='Ds_Signature' value=" . $responseSignature. ">
+                    <input type='hidden' name='Ds_MerchantParameters' value=" . $responseParams . ">
                 </form>
                 <script languaje='javascript'>
                     document.frm.submit();
@@ -185,5 +183,5 @@ class Response
             ";
             echo $form;
         }
-    }
+	}
 }
