@@ -11,6 +11,8 @@ class Response
 
 	private $merchantParamsArray;
 
+	private $response;
+
 	protected $redsysApi;
 	
 	public $options;
@@ -20,6 +22,22 @@ class Response
 		$this->redsysApi = $redsysApi;
 		$this->setOptions($options);
 		$this->setDsParams();
+		/* create response object*/
+		$this->response = new RedsysAPI();
+		// datos del objeto respuesta
+		$responseParameters = array(
+            'Ds_Amount' => $this->getMerchantParam('DS_MERCHANT_AMOUNT'),
+            'Ds_Currency' => $this->getMerchantParam('DS_MERCHANT_CURRENCY'),
+            'Ds_Order' => $this->getMerchantParam('DS_MERCHANT_ORDER'),
+            'Ds_MerchantCode' => $this->getMerchantParam('DS_MERCHANT_MERCHANTCODE'),
+            'Ds_Terminal' => $this->getMerchantParam('DS_MERCHANT_TERMINAL'),
+            'Ds_TransactionType' => 0
+        );
+
+        foreach ($responseParameters as $key => $value)
+        {
+        	$this->response->setParameter($key, $value);
+        }
 	}
 
 	/** inicializar los parámetros recibidos */
@@ -134,29 +152,18 @@ class Response
 		}
 		return true;
 	}
-
+	public function getResponse()
+	{
+		return $this->response;
+	}
 	public function createFakeResponse($type = 'asincrona')
 	{
 		if (!$this->checkSignature())
 		{
 			throw new Exception("Fallo en la firma", 1);
 		}
-		// Generar objeto respuesta
-		$redsysResponse = new RedsysAPI();
-		// datos del objeto respuesta
-		$responseParameters = array(
-            'Ds_Amount' => $this->getMerchantParam('DS_MERCHANT_AMOUNT'),
-            'Ds_Currency' => $this->getMerchantParam('DS_MERCHANT_CURRENCY'),
-            'Ds_Order' => $this->getMerchantParam('DS_MERCHANT_ORDER'),
-            'Ds_MerchantCode' => $this->getMerchantParam('DS_MERCHANT_MERCHANTCODE'),
-            'Ds_Terminal' => $this->getMerchantParam('DS_MERCHANT_TERMINAL'),
-            'Ds_TransactionType' => 0
-        );
         // rellenar objeto respuesta
-        foreach ($responseParameters as $key => $value)
-        {
-        	$redsysResponse->setParameter($key, $value);
-        }
+        $redsysResponse = $this->getResponse();
         // URL DE VUELTA
         $urlBack = $this->getMerchantParam('DS_MERCHANT_URLOK');
         // Crear firma
