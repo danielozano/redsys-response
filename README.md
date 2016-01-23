@@ -22,5 +22,6 @@ En tu pasarela de pago simplemente apunta hacia el directorio web/
 
 Necesitarás activar mod_rewrite en Apache.
 ### TODO:
+  * Testear respuesta asíncrona
   * Añadir documentación
   * Seguir estandar PSR-2 

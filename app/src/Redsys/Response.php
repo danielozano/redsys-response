@@ -291,7 +291,7 @@ class Response
         if ('asincrona' === $type) {
             // crear el array de datos que se enviarán de vuelta
             $postParams = array();
-            $postParams['Ds_Version'] = 'HMAC_SHA256_V1';
+            $postParams['Ds_SignatureVersion'] = 'HMAC_SHA256_V1';
             $postParams['Ds_Signature'] = $responseSignature;
             $postParams['Ds_MerchantParameters'] = $responseParams;
             // hacer petición curl y redireccionar
@@ -308,6 +308,7 @@ class Response
                 <form action=$merchantUrl method=POST name='frm'>
                     <input type='hidden' name='Ds_Signature' value=" . $responseSignature. ">
                     <input type='hidden' name='Ds_MerchantParameters' value=" . $responseParams . ">
+                    <input type='hidden' name='Ds_SignatureVersion' value=" . $postParams['Ds_SignatureVersion'] . ">
                 </form>
                 <script languaje='javascript'>
                     document.frm.submit();
