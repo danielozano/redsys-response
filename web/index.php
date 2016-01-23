@@ -17,6 +17,6 @@ if (file_exists(dirname(__FILE__) . '/../app/resources/config.local.php'))
 
 
 use Redsys\Response;
-
-$response = new Response(require $config);
-$response->loadFromUrl();
+use Redsys\Api\RedsysAPI;
+$response = new Response(new RedsysAPI(), require $config);
+$response->createFakeResponse('sincrona');
